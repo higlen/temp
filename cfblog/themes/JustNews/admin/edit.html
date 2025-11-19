@@ -318,6 +318,8 @@
 	var state = { notebooks: [], notes: [], selectedNotebookId: NOTEBOOK_UNFILED_ID, selectedNoteId: null };
 	var tagState = [];
 	var mdEditor;
+	var editorReady = false;
+	var pendingMarkdown = null;
 	var articleJson = <!--{articleJson}-->;
 	var categoryJson = <!--{categoryJson}-->;
 
@@ -336,15 +338,20 @@
 	});
 
 	function initEditor(article) {
+		pendingMarkdown = (article && article.contentMD) || pendingMarkdown || '';
 		mdEditor = editormd("content", {
 			height : 640,
 			path   : "https://cdn.jsdelivr.net/npm/editor.md@1.5.0/lib/",
-			appendMarkdown : article.contentMD,
+			appendMarkdown : "",
 			saveHTMLToTextarea : true,
 			mode : "markdown",
 			tex  : true,
 			tocm : true,
-			codeFold : true
+			codeFold : true,
+			onload: function(){
+				editorReady = true;
+				applyPendingMarkdown();
+			}
 		});
 	}
 
@@ -374,8 +381,20 @@
 		state.selectedNoteId = article.id;
 		setTagList(article.tags);
 		setVisibility((article.visibility || 'public') === 'private');
-		if(mdEditor){
-			mdEditor.setMarkdown(article.contentMD || '');
+		setEditorContent(article.contentMD || '');
+	}
+
+	function applyPendingMarkdown(){
+		if(typeof pendingMarkdown === 'string' && pendingMarkdown !== null && mdEditor && mdEditor.cm){
+			mdEditor.setMarkdown(pendingMarkdown);
+			pendingMarkdown = null;
+		}
+	}
+
+	function setEditorContent(content){
+		pendingMarkdown = (typeof content === 'string') ? content : '';
+		if(editorReady){
+			applyPendingMarkdown();
 		}
 	}
 
