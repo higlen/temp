@@ -52,10 +52,21 @@
 	<div class="tab-pane fade" id="list">
 		<div class="container" >
 			<table class="table  table-striped" id="articleList">
-				  <tr><td>ID</td><td>标题</td><td>创建日期</td></tr>
+				<thead>
+					<tr><td>ID</td><td>标题</td><td>创建日期</td></tr>
+				</thead>
+				<tbody id="articleListBody">
+					<tr><td colspan="3" class="text-center text-muted">加载中...</td></tr>
+				</tbody>
 			</table>
 			<input type="hidden"  name="page" id="page" value='1'>
-			<a id="loadmore" class="btn btn-default">加载更多...</a>
+			<nav aria-label="文章列表分页" class="text-center">
+				<ul class="pagination" id="articlePager">
+					<li id="articlePagerPrev" class="disabled"><a href="#" aria-label="上一页"><span aria-hidden="true">&laquo;</span> 上一页</a></li>
+					<li class="disabled"><a href="javascript:void(0);">第 <span id="articlePagerCurrent">1</span> 页</a></li>
+					<li id="articlePagerNext"><a href="#" aria-label="下一页">下一页 <span aria-hidden="true">&raquo;</span></a></li>
+				</ul>
+			</nav>
 		</div> 
 	</div>
 	<div class="tab-pane fade in active" id="new">
@@ -170,10 +181,10 @@
 	$(function() {
 		$('#myTab li:eq(0) 1').tab('show');
 		//获取分类
-		var categoryJson = <!--{categoryJson}-->;
+		var categoryJson = JSON.parse('<!--{categoryJson}-->');
 		//获取菜单
-		var menuJson = <!--{menuJson}-->;
-		var linkJson = <!--{linkJson}-->;
+		var menuJson = JSON.parse('<!--{menuJson}-->');
+		var linkJson = JSON.parse('<!--{linkJson}-->');
 		var mdEditor = editormd("content", {
 				// width  : "90%",
 				 height : 640,
@@ -196,31 +207,89 @@
 		for (var i = 0; i < categoryJson.length; i++) {
 			category.append('<option id=' + categoryJson[i] + ' value=' + categoryJson[i] + '>' + categoryJson[i] + '</option>');
 		}
-		$("#loadmore").click();//初始加载一页
+		loadArticlePage(1);
+		$("#articlePagerPrev").on("click", function(e){
+			e.preventDefault();
+			if($(this).hasClass("disabled")){
+				return false;
+			}
+			loadArticlePage(currentArticlePage - 1);
+		});
+
+		$("#articlePagerNext").on("click", function(e){
+			e.preventDefault();
+			if($(this).hasClass("disabled")){
+				return false;
+			}
+			loadArticlePage(currentArticlePage + 1);
+		});
 	});
-    //加载文章列表	
-    $("#loadmore").click(function(){
-        var page=$("#page").val();
-        $.ajax({
-            url:"/admin/getList/" + page + "/",
-            type:'GET',
-            dataType:"json",
-            //data:{"page":page,"typeid":typeid},
-            success:function(data){
-    
-                    tableContent="";
-                    $.each(data,function(i){
-                        var Info = data[i];
-                        var num = i+1;
-                        tableContent += '<tr><td>'+Info.id+'</td><td><a href="/admin/edit/'+Info.id+'/">'+Info.title+'</a></td><td>'+Info.createDate.replace("T","")+'</td></tr>';
-     
-                    })
-                    $("#articleList").append(tableContent);
-                    $("#page").val(++page);
-      
-            }
-        });
-    })
+	var ARTICLE_PAGE_SIZE = 20;
+	var currentArticlePage = 1;
+	var reachedLastArticlePage = false;
+	var siteOrigin = window.location.origin.replace(/\/$/, "");
+	var adminBaseURL = siteOrigin + '/admin';
+
+	function setArticleTableLoading(){
+		$("#articleListBody").html('<tr><td colspan="3" class="text-center text-muted">加载中...</td></tr>');
+	}
+
+	function renderArticleRows(data){
+		var rows = "";
+		if(!data || data.length === 0){
+			rows = '<tr><td colspan="3" class="text-center text-muted">暂无文章</td></tr>';
+		} else {
+			$.each(data,function(i){
+				var Info = data[i];
+				var articleSlug = (Info.link && Info.link.length > 0) ? Info.link : 'nil';
+				var editUrl = adminBaseURL + '/edit/' + Info.id + '/';
+				var viewUrl = siteOrigin + '/article/' + Info.id + '/' + articleSlug + '.html';
+				var createDateText = Info.createDate ? Info.createDate.replace("T"," ") : '';
+				rows += '<tr>'+
+					'<td><a href="'+editUrl+'">'+Info.id+'</a></td>'+
+					'<td><a href="'+viewUrl+'" target="_blank" rel="noopener noreferrer">'+Info.title+'</a></td>'+
+					'<td>'+createDateText+'</td>'+
+				'</tr>';
+			});
+		}
+		$("#articleListBody").html(rows);
+	}
+
+	function updateArticlePagination(){
+		$("#articlePagerCurrent").text(currentArticlePage);
+		$("#page").val(currentArticlePage);
+		if(currentArticlePage <= 1){
+			$("#articlePagerPrev").addClass("disabled");
+		} else {
+			$("#articlePagerPrev").removeClass("disabled");
+		}
+		if(reachedLastArticlePage){
+			$("#articlePagerNext").addClass("disabled");
+		} else {
+			$("#articlePagerNext").removeClass("disabled");
+		}
+	}
+
+	function loadArticlePage(page){
+		if(page < 1){
+			page = 1;
+		}
+		setArticleTableLoading();
+		$.ajax({
+			url:"/admin/getList/" + page + "/",
+			type:'GET',
+			dataType:"json",
+			success:function(data){
+				currentArticlePage = page;
+				reachedLastArticlePage = data.length < ARTICLE_PAGE_SIZE;
+				renderArticleRows(data);
+				updateArticlePagination();
+			},
+			error:function(){
+				$("#articleListBody").html('<tr><td colspan="3" class="text-center text-danger">加载失败，请稍后再试</td></tr>');
+			}
+		});
+	}
     //新建文章
     function saveAddNew(){
         if(
