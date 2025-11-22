@@ -73,6 +73,10 @@
 		.writer-sidebar.collapsed .panel {
 			display: none;
 		}
+		#editorArea {
+			transition: all 0.3s ease;
+			flex: 1;
+		}
 		.panel.writer-card {
 			border-radius: 12px;
 			border: none;
@@ -243,7 +247,7 @@
 						</div>
 					</div>
 				</div>
-				<div class="col-md-6 col-lg-7">
+				<div class="col-md-6 col-lg-7" id="editorArea">
 					<div class="panel writer-card editor-panel">
 						<div class="panel-heading">
 							<span class="panel-title">编辑文章</span>
@@ -396,6 +400,39 @@
 		} else {
 			btn.removeClass('glyphicon-menu-right').addClass('glyphicon-menu-left');
 		}
+		// 自动调整编辑区域宽度
+		adjustEditorWidth();
+	}
+
+	// 调整编辑区域宽度
+	function adjustEditorWidth() {
+		var notebookCollapsed = $('#notebookSidebar').hasClass('collapsed');
+		var noteCollapsed = $('#noteSidebar').hasClass('collapsed');
+		var editorArea = $('#editorArea');
+		
+		// 移除所有可能的col类
+		editorArea.removeClass(function(index, className) {
+			return (className.match(/(^|\s)col-\S+/g) || []).join(' ');
+		});
+		
+		// 根据侧边栏状态添加合适的Bootstrap列类
+		if (notebookCollapsed && noteCollapsed) {
+			// 两个侧边栏都折叠，编辑器占满整个宽度（减去折叠后的50px空间）
+			editorArea.addClass('col-xs-12');
+			editorArea.css('max-width', 'calc(100% - 100px)'); // 两个折叠栏各50px
+		} else if (notebookCollapsed && !noteCollapsed) {
+			// notebook折叠，note展开
+			editorArea.addClass('col-md-9 col-lg-10');
+			editorArea.css('max-width', ''); // 清除自定义max-width
+		} else if (!notebookCollapsed && noteCollapsed) {
+			// notebook展开，note折叠
+			editorArea.addClass('col-md-10 col-lg-10');
+			editorArea.css('max-width', '');
+		} else {
+			// 两个都展开，使用默认宽度
+			editorArea.addClass('col-md-6 col-lg-7');
+			editorArea.css('max-width', '');
+		}
 	}
 
 	// 侧边栏拖动调整宽度功能
@@ -487,6 +524,7 @@
 		hydrateForm(articleJson);
 		bindUI();
 		initResizable();
+		adjustEditorWidth(); // 初始化时调整编辑器宽度
 		loadNotebooks().then(function(){
 			return loadNotes(state.selectedNotebookId);
 		}).then(function(){
