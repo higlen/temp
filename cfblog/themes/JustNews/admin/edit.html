@@ -25,6 +25,53 @@
 		.writer-sidebar {
 			border-right: 1px solid #f3f3f3;
 			min-height: calc(100vh - 140px);
+			position: relative;
+			transition: all 0.3s ease;
+		}
+		.writer-sidebar.collapsed {
+			max-width: 50px;
+			min-width: 50px;
+			overflow: hidden;
+		}
+		.writer-sidebar .resize-handle {
+			position: absolute;
+			top: 0;
+			right: 0;
+			width: 5px;
+			height: 100%;
+			cursor: col-resize;
+			background: transparent;
+			z-index: 10;
+		}
+		.writer-sidebar .resize-handle:hover {
+			background: #3b82f6;
+		}
+		.toggle-sidebar-btn {
+			position: absolute;
+			top: 10px;
+			right: 10px;
+			z-index: 20;
+			background: #fff;
+			border: 1px solid #e5e7eb;
+			border-radius: 4px;
+			padding: 4px 8px;
+			cursor: pointer;
+			font-size: 12px;
+			color: #6b7280;
+			transition: all 0.2s;
+		}
+		.toggle-sidebar-btn:hover {
+			background: #f9fafb;
+			border-color: #3b82f6;
+			color: #3b82f6;
+		}
+		.writer-sidebar.collapsed .toggle-sidebar-btn {
+			right: 5px;
+			writing-mode: vertical-rl;
+			text-orientation: mixed;
+		}
+		.writer-sidebar.collapsed .panel {
+			display: none;
 		}
 		.panel.writer-card {
 			border-radius: 12px;
@@ -54,6 +101,14 @@
 			margin-bottom: 8px;
 			transition: all .2s ease;
 			background: #fff;
+			user-select: none;
+		}
+		.note-item {
+			cursor: move;
+		}
+		.note-item.dragging {
+			opacity: 0.5;
+			background: #f3f4f6;
 		}
 		.notebook-item.active,
 		.note-item.active,
@@ -152,7 +207,11 @@
 
 		<div class="writer-shell container-fluid">
 			<div class="row">
-				<div class="col-md-3 col-lg-2 writer-sidebar">
+				<div class="col-md-3 col-lg-2 writer-sidebar" id="notebookSidebar">
+					<div class="resize-handle" data-target="notebookSidebar"></div>
+					<button class="toggle-sidebar-btn" onclick="toggleSidebar('notebookSidebar')">
+						<span class="glyphicon glyphicon-menu-left"></span>
+					</button>
 					<div class="panel writer-card notebook-panel">
 						<div class="panel-heading clearfix">
 							<span class="panel-title pull-left">文集</span>
@@ -166,7 +225,11 @@
 						</div>
 					</div>
 				</div>
-				<div class="col-md-3 col-lg-3 writer-sidebar">
+				<div class="col-md-3 col-lg-3 writer-sidebar" id="noteSidebar">
+					<div class="resize-handle" data-target="noteSidebar"></div>
+					<button class="toggle-sidebar-btn" onclick="toggleSidebar('noteSidebar')">
+						<span class="glyphicon glyphicon-menu-left"></span>
+					</button>
 					<div class="panel writer-card note-panel">
 						<div class="panel-heading clearfix">
 							<span class="panel-title pull-left" id="currentNotebookTitle">全部笔记</span>
@@ -323,12 +386,107 @@
 	var articleJson = <!--{articleJson}-->;
 	var categoryJson = <!--{categoryJson}-->;
 
+	// 侧边栏折叠功能
+	function toggleSidebar(sidebarId) {
+		var sidebar = $('#' + sidebarId);
+		sidebar.toggleClass('collapsed');
+		var btn = sidebar.find('.toggle-sidebar-btn .glyphicon');
+		if (sidebar.hasClass('collapsed')) {
+			btn.removeClass('glyphicon-menu-left').addClass('glyphicon-menu-right');
+		} else {
+			btn.removeClass('glyphicon-menu-right').addClass('glyphicon-menu-left');
+		}
+	}
+
+	// 侧边栏拖动调整宽度功能
+	var resizeState = { isResizing: false, currentHandle: null, startX: 0, startWidth: 0 };
+	
+	function initResizable() {
+		$('.resize-handle').on('mousedown', function(e) {
+			resizeState.isResizing = true;
+			resizeState.currentHandle = $(this);
+			resizeState.startX = e.pageX;
+			var target = resizeState.currentHandle.data('target');
+			resizeState.startWidth = $('#' + target).outerWidth();
+			e.preventDefault();
+		});
+
+		$(document).on('mousemove', function(e) {
+			if (!resizeState.isResizing) return;
+			var target = resizeState.currentHandle.data('target');
+			var sidebar = $('#' + target);
+			var diff = e.pageX - resizeState.startX;
+			var newWidth = resizeState.startWidth + diff;
+			if (newWidth >= 100 && newWidth <= 600) {
+				sidebar.css('flex', '0 0 ' + newWidth + 'px');
+				sidebar.css('max-width', newWidth + 'px');
+			}
+		});
+
+		$(document).on('mouseup', function() {
+			if (resizeState.isResizing) {
+				resizeState.isResizing = false;
+				resizeState.currentHandle = null;
+			}
+		});
+	}
+
+	// 文章列表拖动排序功能
+	var dragState = { draggedItem: null, draggedIndex: -1 };
+
+	function initNoteDragSort() {
+		$('#noteList').on('dragstart', '.note-item', function(e) {
+			dragState.draggedItem = $(this);
+			dragState.draggedIndex = dragState.draggedItem.index();
+			$(this).addClass('dragging');
+			e.originalEvent.dataTransfer.effectAllowed = 'move';
+		});
+
+		$('#noteList').on('dragend', '.note-item', function(e) {
+			$(this).removeClass('dragging');
+		});
+
+		$('#noteList').on('dragover', '.note-item', function(e) {
+			e.preventDefault();
+			e.originalEvent.dataTransfer.dropEffect = 'move';
+			var targetItem = $(this);
+			if (dragState.draggedItem && dragState.draggedItem[0] !== targetItem[0]) {
+				var targetIndex = targetItem.index();
+				if (dragState.draggedIndex < targetIndex) {
+					targetItem.after(dragState.draggedItem);
+				} else {
+					targetItem.before(dragState.draggedItem);
+				}
+				dragState.draggedIndex = dragState.draggedItem.index();
+			}
+		});
+
+		$('#noteList').on('drop', '.note-item', function(e) {
+			e.preventDefault();
+			// 这里可以保存新的排序到服务器
+			updateNoteSortOrder();
+		});
+	}
+
+	function updateNoteSortOrder() {
+		var newOrder = [];
+		$('#noteList .note-item').each(function(index) {
+			var noteId = $(this).data('note-id');
+			if (noteId) {
+				newOrder.push({ id: noteId, order: index });
+			}
+		});
+		// 可以发送到服务器保存排序
+		console.log('New note order:', newOrder);
+	}
+
 	$(function() {
 		$('#myTab li:eq(0) a').tab('show');
 		initEditor(articleJson);
 		initCategoryOptions();
 		hydrateForm(articleJson);
 		bindUI();
+		initResizable();
 		loadNotebooks().then(function(){
 			return loadNotes(state.selectedNotebookId);
 		}).then(function(){
@@ -365,6 +523,12 @@
 		}
 		category.selectpicker('render');
 		category.selectpicker('refresh');
+		// 如果没有已选中的值，默认选择第一个
+		if (!category.val() || category.val().length === 0) {
+			if (categoryJson && categoryJson.length > 0) {
+				category.selectpicker('val', [categoryJson[0]]);
+			}
+		}
 	}
 
 	function hydrateForm(article){
@@ -375,7 +539,12 @@
 		$('#createDate').val((article.createDate || '').replace(" ","T"));
 		$('#priority').val(article.priority === undefined ? "0.5" : article.priority);
 		$('#changefreq').selectpicker('val', (article.changefreq === undefined ? "daily":article.changefreq));
-		$('#category').selectpicker('val', article.category);
+		// 设置分类，如果为空则使用第一个选项作为默认值
+		if (article.category && article.category.length > 0) {
+			$('#category').selectpicker('val', article.category);
+		} else if (categoryJson && categoryJson.length > 0) {
+			$('#category').selectpicker('val', [categoryJson[0]]);
+		}
 		$('#notebookId').val(article.notebookId || '');
 		state.selectedNotebookId = article.notebookId && article.notebookId.length ? article.notebookId : NOTEBOOK_UNFILED_ID;
 		state.selectedNoteId = article.id;
@@ -407,6 +576,16 @@
 		$('#btnNewNote').on('click', function(){ createNewNote(); });
 		$('#notebookModalConfirm').on('click', submitNotebookModal);
 		$('#noteModalConfirm').on('click', submitNoteRename);
+		
+		// 添加 Ctrl+S 快捷键保存
+		$(document).on('keydown', function(e) {
+			// Ctrl+S 或 Cmd+S (Mac)
+			if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+				e.preventDefault();
+				saveEdit();
+				return false;
+			}
+		});
 	}
 
 	function handleTagInput(e){
@@ -538,7 +717,8 @@
 		}
 		$('#noteEmpty').hide();
 		state.notes.forEach(function(note){
-			var item = $('<div class="note-item"></div>');
+			var item = $('<div class="note-item" draggable="true"></div>');
+			item.attr('data-note-id', note.id);
 			if(note.id === state.selectedNoteId){ item.addClass('active'); }
 			var badge = note.visibility === 'private' ? ' <span class="label label-warning">私密</span>' : '';
 			item.append('<div><strong>'+ note.title +'</strong>'+ badge +'</div>');
@@ -550,6 +730,8 @@
 			item.on('click', function(){ loadArticle(note.id); });
 			list.append(item);
 		});
+		// 初始化拖动排序
+		initNoteDragSort();
 	}
 
 	function getNotebookTitleById(id){
@@ -703,13 +885,16 @@
 		$('#createDate').val((article.createDate || '').replace(" ","T"));
 		$('#priority').val(article.priority === undefined ? "0.5" : article.priority);
 		$('#changefreq').selectpicker('val', (article.changefreq === undefined ? "daily":article.changefreq));
-		$('#category').selectpicker('val', article.category);
+		// 设置分类，如果为空则使用第一个选项作为默认值
+		if (article.category && article.category.length > 0) {
+			$('#category').selectpicker('val', article.category);
+		} else if (categoryJson && categoryJson.length > 0) {
+			$('#category').selectpicker('val', [categoryJson[0]]);
+		}
 		$('#notebookId').val(article.notebookId || '');
 		setTagList(article.tags);
 		setVisibility((article.visibility || 'public') === 'private');
-		if(mdEditor){
-			mdEditor.setMarkdown(article.contentMD || '');
-		}
+		setEditorContent(article.contentMD || '');
 	}
 
 	function syncTagInput(){
@@ -720,9 +905,7 @@
 		$('#editForm')[0].reset();
 		setTagList([]);
 		setVisibility(false);
-		if(mdEditor){
-			mdEditor.setMarkdown('');
-		}
+		setEditorContent('');
 	}
 
 	function saveEdit(){
